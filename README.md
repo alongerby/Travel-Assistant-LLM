@@ -42,5 +42,3 @@ POST /chat → Send a user message, get LLM reply.
 POST /reset → Clear memory for current session.
 
 GET /memory?session_id=... → Inspect memory state.
-
-GET /country/{name} → Example: fetch country info from REST Countries API.
