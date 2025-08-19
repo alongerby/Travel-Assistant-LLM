@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Travel Assistant</title>
+  <style>
+    :root { --bg:#f7f7fb; --card:#ffffff; --text:#1f2937; --muted:#6b7280; --primary:#2563eb; }
+    *{box-sizing:border-box} body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text)}
+    header{position:sticky;top:0;background:#fff8;backdrop-filter:blur(8px);border-bottom:1px solid #e5e7eb}
+    .container{max-width:880px;margin:0 auto;padding:12px 16px}
+    .card{background:var(--card);border:1px solid #e5e7eb;border-radius:14px;padding:12px;box-shadow:0 1px 2px #0001}
+    .chat{height:70vh;overflow:auto;display:flex;flex-direction:column;gap:8px;padding:8px}
+    .bubble{max-width:80%;padding:10px 12px;border-radius:14px;line-height:1.45;white-space:pre-wrap}
+    .user{align-self:flex-end;background:var(--primary);color:#fff;border-bottom-right-radius:6px}
+    .assistant{align-self:flex-start;background:#fff;border:1px solid #e5e7eb}
+    .system{align-self:center;font-size:12px;color:var(--muted)}
+    textarea{flex:1;min-height:56px;max-height:140px;resize:vertical;border:1px solid #e5e7eb;border-radius:12px;padding:10px}
+    button{padding:10px 14px;border-radius:12px;border:1px solid #d1d5db;background:#fff;cursor:pointer}
+    button.primary{background:var(--primary);color:#fff;border-color:transparent}
+    .small{font-size:12px;color:var(--muted)}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="container" style="display:flex;align-items:center;justify-content:space-between;height:52px;">
+      <strong>Travel Assistant</strong>
+      <div class="small">Connected to <code id="endpointLabel">http://localhost:8000/chat</code></div>
+      <button id="reset" class="primary">Reset Session</button>
+    </div>
+  </header>
+
+  <main class="container" style="margin-top:12px;">
+    <section class="card">
+      <div id="chat" class="chat">
+        <div class="bubble system">Hi! I can help with destinations, packing, or day plans. Just type your question.</div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:8px;">
+        <textarea id="input" placeholder="Try: Recommend destinations for 5 days in October"></textarea>
+        <button id="send" class="primary">Send</button>
+      </div>
+      <div class="small" id="status">Ready</div>
+    </section>
+  </main>
+
+  <script>
+    // Fixed backend endpoint; memory is managed server-side (invisible to user)
+    const DEFAULT_ENDPOINT = 'http://localhost:8000/chat';
+
+    const $ = (id) => document.getElementById(id);
+    const chat = $('chat');
+    const input = $('input');
+    const sendBtn = $('send');
+    const endpointLabel = $('endpointLabel');
+    const statusEl = $('status');
+    const resetBtn = $('reset')
+
+    function addBubble(role, content){
+      const div = document.createElement('div');
+      div.className = 'bubble ' + (role === 'user' ? 'user' : role === 'system' ? 'system' : 'assistant');
+      div.textContent = content;
+      chat.appendChild(div);
+      chat.scrollTop = chat.scrollHeight;
+    }
+
+    function sessionId(){
+      let sid = localStorage.getItem('ta_session_id');
+      if (!sid){ sid = Math.random().toString(36).slice(2); localStorage.setItem('ta_session_id', sid); }
+      return sid;
+    }
+
+    async function reset() {
+      // use the fixed endpoint
+      const ep = DEFAULT_ENDPOINT.replace(/\/chat$/, '/reset');
+      const sid = sessionId();
+      statusEl.textContent = 'Resetting…';
+
+      try {
+        const res = await fetch(ep, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ session_id: sid })
+        });
+        if (!res.ok) {
+          const errText = await res.text();
+          throw new Error(res.status + ' ' + res.statusText + ' — ' + errText.slice(0,160));
+        }
+        addBubble('system', '✅ Memory reset for this session.');
+        statusEl.textContent = 'Memory reset';
+      } catch (e) {
+        addBubble('system', '⚠️ Reset failed: ' + e.message);
+        statusEl.textContent = 'Error';
+      }
+    }
+
+    async function send(){
+      const text = input.value.trim();
+      if (!text) return;
+      input.value = '';
+      addBubble('user', text);
+
+      const ep = DEFAULT_ENDPOINT;
+      endpointLabel.textContent = ep;
+
+      const payload = { session_id: sessionId(), input: text };
+      statusEl.textContent = 'Sending…';
+
+      try{
+        const res = await fetch(ep, { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(payload) });
+        if(!res.ok){ const errText = await res.text(); throw new Error(res.status+' '+res.statusText+' — '+errText.slice(0,160)); }
+        const data = await res.json();
+        addBubble('assistant', data.reply || '(no reply)');
+        statusEl.textContent = data.used_weather ? 'Reply • weather data used' : 'Reply';
+      }catch(e){
+        addBubble('assistant', 'Oops — backend error. '+ e.message);
+        statusEl.textContent = 'Error';
+      }
+    }
+
+    sendBtn.addEventListener('click', send);
+    input.addEventListener('keydown', (e)=>{ if (e.key==='Enter' && !e.shiftKey){ e.preventDefault(); send(); } });
+    resetBtn.addEventListener('click', reset);
+
+    // init
+    sessionId();
+  </script>
+</body>
+</html>
